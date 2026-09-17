@@ -11,6 +11,11 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Set up Ruby
+        uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: '3.3'
+
       - name: Validate skills
         run: |
           set -euo pipefail
@@ -28,10 +33,22 @@ jobs:
             if [ ! -f "$skill" ]; then
               echo "::error::$skill missing"; fail=1; echo "::endgroup::"; continue
             fi
-            fm_name="$(awk '/^---$/{c++;next} c==1 && /^name:/{print $2; exit}' "$skill")"
-            fm_desc="$(awk '/^---$/{c++;next} c==1 && /^description:/{found=1; print; exit}' "$skill")"
-            [ -n "$fm_name" ] || { echo "::error::$skill: frontmatter 'name' missing"; fail=1; }
-            [ -n "$fm_desc" ] || { echo "::error::$skill: frontmatter 'description' missing"; fail=1; }
+            if ! fm_name="$(ruby -ryaml -e '
+              path = ARGV.fetch(0)
+              lines = File.readlines(path)
+              abort("frontmatter must start with ---") unless lines.first&.chomp == "---"
+              closing = lines.drop(1).index { |line| line.chomp == "---" }
+              abort("frontmatter closing --- missing") unless closing
+              data = YAML.safe_load(lines[1, closing].join, permitted_classes: [], aliases: false)
+              abort("frontmatter must be a mapping") unless data.is_a?(Hash)
+              name = data["name"]
+              description = data["description"]
+              abort("frontmatter name must be a non-empty string") unless name.is_a?(String) && !name.empty?
+              abort("frontmatter description must be a non-empty string") unless description.is_a?(String) && !description.strip.empty?
+              puts name
+            ' "$skill")"; then
+              echo "::error::$skill: invalid YAML frontmatter"; fail=1; echo "::endgroup::"; continue
+            fi
             if [ "$fm_name" != "$name" ]; then
               echo "::error::$skill: name '$fm_name' != directory '$name'"; fail=1
             fi
@@ -40,19 +57,18 @@ jobs:
             fi
             names[$fm_name]=1
             # referenced local files must exist
-            while IFS=: read -r _ ref; do
-              ref="$(echo "$ref" | tr -d ' ()`' | xargs dirname 2>/dev/null || true)"
-              [ -z "$ref" ] && continue
-              case "$ref" in
-                http*|*\**) continue ;;
-              esac
-              if [ ! -e "$dir$ref" ] && [ ! -e "$dir${ref:-x}" ]; then
-                # tolerate references to files with extensions stripped
-                if ! ls "$dir$ref".* >/dev/null 2>&1; then
-                  echo "::warning::$skill: reference target not found: $ref"
-                fi
+            while IFS= read -r link; do
+              ref="${link#*\(}"
+              ref="${ref%%#*}"
+              ref="${ref%%\?*}"
+              if [[ "$ref" == ./* ]]; then
+                ref="${ref#./}"
               fi
-            done < <(grep -nE '\((\.\/)?(references|scripts|tests)/' "$skill" || true)
+              if [ ! -e "$dir$ref" ]; then
+                echo "::error::$skill: local reference target not found: $ref"
+                fail=1
+              fi
+            done < <(grep -oE '\]\((\./)?(references|scripts|tests)/[^)[:space:]]+' "$skill" || true)
             # scripts must be executable and parse
             for script in "$dir"scripts/*; do
               [ -x "$script" ] || { echo "::error::$script not executable"; fail=1; }

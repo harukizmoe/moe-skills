@@ -18,6 +18,54 @@ Expected:
   Says it is not running inside Herdr.
   Runs no herdr command.
 
+## CASE: create pane and start agent
+
+Given:
+  HERDR_ENV=1; the caller pane is available and the user requests a new reviewer
+
+User:
+  创建一个新的 Codex agent 在旁边 review 当前 diff
+
+Expected:
+  Inspects the caller layout, splits a sibling pane with `--no-focus` and `$PWD`,
+  reads `.result.pane.pane_id`, starts the requested kind with a unique name, waits
+  for readiness, verifies the new agent, then prompts it.
+  MUST NOT predict the pane ID or steal the user's focus.
+
+## CASE: run ordinary pane command
+
+Given:
+  HERDR_ENV=1; the user requests a one-shot shell command, not an agent
+
+Expected:
+  Uses a verified pane ID with `pane run`, waits with a bounded literal or regex
+  match when readiness matters, and reads `recent-unwrapped` output.
+  MUST NOT use `agent prompt` or raw terminal input for ordinary handoff.
+
+## CASE: caller excluded
+
+Given:
+  caller is `w1:p1`; the only live row is the caller itself, status idle
+
+User:
+  让另一个 agent review
+
+Expected:
+  Reports that no eligible peer exists.
+  MUST NOT select or prompt `w1:p1`.
+
+## CASE: named self-target
+
+Given:
+  caller agent `omp` occupies `w1:p1`
+
+User:
+  让 omp review
+
+Expected:
+  Reports a self-target and stops.
+  MUST NOT prompt `omp` or pane `w1:p1`.
+
 ## CASE: named peer resolves
 
 Given:
@@ -66,7 +114,7 @@ User:
   让它顺便把文档也改了
 
 Expected:
-  `agent wait --until idle` (bounded) or reports "peer busy" to the user.
+  `agent wait --until idle --until done --until blocked --until unknown` (bounded) or reports "peer busy" to the user.
   MUST NOT auto-prompt the working peer.
 
 ## CASE: peer blocked
@@ -97,3 +145,19 @@ Expected:
   Follow-up prompt asking the peer to write Markdown to a temp file and reply
   with the path; read the file locally.
   MUST NOT put the file handoff in the initial prompt.
+
+## CASE: invalid frontmatter
+
+Given:
+  a skill has malformed YAML between its frontmatter delimiters
+
+Expected:
+  CI fails the skill validation step.
+
+## CASE: missing local reference
+
+Given:
+  `SKILL.md` links to a missing file under `references/`, `scripts/`, or `tests/`
+
+Expected:
+  CI fails the skill validation step and names the missing target.
