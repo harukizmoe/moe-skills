@@ -1,7 +1,8 @@
 # Protocol notes (maintainers)
 
 Design decisions behind `herdr-collab`, kept out of SKILL.md so the agent-facing
-surface stays lean. See `herdr` skill docs for full CLI semantics.
+surface stays lean. This document covers why the standalone skill combines Herdr
+layout control with guarded multi-agent collaboration.
 
 ## Why verification is a separate step
 
@@ -10,6 +11,13 @@ have been prompted by another client, exited, or moved. `agent get` on the resol
 target is the only cheap re-check; the skill treats it as mandatory because a prompt
 into an exited name fails, and a prompt into a `working` peer queues noise into an
 active turn.
+
+## Why the caller is excluded
+
+`herdr agent list` includes the calling agent, so the caller's own `pane_id` must
+be removed before candidate selection. A named target that resolves to
+`$HERDR_PANE_ID` is a self-target and must be rejected. `agent get` exposes the
+verified record under `.result.agent`, including `.agent_status` and `.pane_id`.
 
 ## Why targets are names or pane IDs only
 
@@ -27,6 +35,7 @@ terminal title, sidebar position) is ambiguous across workspaces and rejected he
   return when the current turn ends. This is why the skill refuses to auto-prompt
   working peers instead of relying on the gate.
 - Timeout/stall does not prove non-delivery; the skill mandates inspect-before-resubmit.
+- Busy-peer waits request `idle`, `done`, `blocked`, and `unknown`; only `idle`/`done` are ready for a new prompt.
 
 ## blocked is human territory
 
@@ -34,10 +43,10 @@ terminal title, sidebar position) is ambiguous across workspaces and rejected he
 read it, surface it verbatim, wait for the human. Two agents auto-approving each
 other's dialogs is the failure mode this rule exists to prevent.
 
-## Known limitations
+## Scope boundaries
 
-- Cross-machine (`--machine`) peers are out of scope for 0.1.0; the skill assumes a
-  single session. Extending discovery/filtering to saved machines is a candidate for
-  0.2.0.
-- No concurrency limit is enforced by Herdr itself; the one-in-flight rule is a skill
-  convention to keep peer transcripts readable.
+- Saved-machine control is supported only with an explicit, consistently reused
+  `--machine` selector; local caller IDs are never used to auto-select remote peers.
+- The one-in-flight rule is a skill convention; Herdr itself does not enforce it.
+- Layout defaults preserve the caller's cwd and focus; users must explicitly request
+  a different workspace, tab, worktree, or cwd.

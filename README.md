@@ -8,7 +8,7 @@ installable.
 
 | Skill | Description | Version |
 |---|---|---|
-| [herdr-collab](skills/herdr-collab/) | Cross-pane agent collaboration in Herdr: discover, verify, prompt, and read peer coding agents. | 0.1.0 |
+| [herdr-collab](skills/herdr-collab/) | Herdr layout and pane commands plus agent lifecycle: create panes, start agents, discover, verify, prompt, and read coding-agent results. | 0.1.1 |
 
 ## Installation
 
