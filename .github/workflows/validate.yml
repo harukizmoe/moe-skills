@@ -1,0 +1,64 @@
+name: validate
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Validate skills
+        run: |
+          set -euo pipefail
+          fail=0
+          shopt -s nullglob
+          dirs=(skills/*/)
+          if [ ${#dirs[@]} -eq 0 ]; then
+            echo "::error::No skills found under skills/"; exit 1
+          fi
+          declare -A names
+          for dir in "${dirs[@]}"; do
+            name="$(basename "$dir")"
+            skill="$dir/SKILL.md"
+            echo "::group::$name"
+            if [ ! -f "$skill" ]; then
+              echo "::error::$skill missing"; fail=1; echo "::endgroup::"; continue
+            fi
+            fm_name="$(awk '/^---$/{c++;next} c==1 && /^name:/{print $2; exit}' "$skill")"
+            fm_desc="$(awk '/^---$/{c++;next} c==1 && /^description:/{found=1; print; exit}' "$skill")"
+            [ -n "$fm_name" ] || { echo "::error::$skill: frontmatter 'name' missing"; fail=1; }
+            [ -n "$fm_desc" ] || { echo "::error::$skill: frontmatter 'description' missing"; fail=1; }
+            if [ "$fm_name" != "$name" ]; then
+              echo "::error::$skill: name '$fm_name' != directory '$name'"; fail=1
+            fi
+            if [ -n "${names[$fm_name]:-}" ]; then
+              echo "::error::duplicate skill name '$fm_name'"; fail=1
+            fi
+            names[$fm_name]=1
+            # referenced local files must exist
+            while IFS=: read -r _ ref; do
+              ref="$(echo "$ref" | tr -d ' ()`' | xargs dirname 2>/dev/null || true)"
+              [ -z "$ref" ] && continue
+              case "$ref" in
+                http*|*\**) continue ;;
+              esac
+              if [ ! -e "$dir$ref" ] && [ ! -e "$dir${ref:-x}" ]; then
+                # tolerate references to files with extensions stripped
+                if ! ls "$dir$ref".* >/dev/null 2>&1; then
+                  echo "::warning::$skill: reference target not found: $ref"
+                fi
+              fi
+            done < <(grep -nE '\((\.\/)?(references|scripts|tests)/' "$skill" || true)
+            # scripts must be executable and parse
+            for script in "$dir"scripts/*; do
+              [ -x "$script" ] || { echo "::error::$script not executable"; fail=1; }
+              bash -n "$script" 2>/dev/null || { echo "::error::$script: syntax error"; fail=1; }
+            done
+            echo "ok: $name"
+            echo "::endgroup::"
+          done
+          exit $fail
