@@ -8,7 +8,7 @@ installable.
 
 | Skill | Description | Version |
 |---|---|---|
-| [herdr-collab](skills/herdr-collab/) | Herdr layout and pane commands plus agent lifecycle: create panes, start agents, discover, verify, prompt, and read coding-agent results. | 0.1.1 |
+| [herdr-collab](skills/herdr-collab/) | Herdr layout and pane commands plus agent lifecycle: create panes, start agents, discover, verify, prompt, and read coding-agent results. | 0.1.2 |
 
 ## Installation
 
