@@ -4,7 +4,7 @@ description: "Control Herdr and coordinate coding agents across workspaces, tabs
 license: MIT
 compatibility: "Requires the herdr CLI (>= 0.9.0) on PATH and HERDR_ENV=1. Agent kinds follow the installed herdr build."
 metadata:
-  version: 0.1.1
+  version: 0.1.2
   owner: harukizmoe
   source: https://github.com/harukizmoe/moe-skills
 ---
@@ -72,6 +72,11 @@ mark a completion seen; reading output does not. Treat both as prompt-eligible o
 after the mandatory `agent get` re-check, and do not infer completion from either
 state without reading the result.
 
+Server-reported `agent_status` can be stale or wrong: a peer running a long turn or
+background job may still be reported `idle`. When reported state and visible screen
+evidence (spinner, progress bar, "Waiting for …", running background job) disagree,
+the screen wins and the peer is treated as `working`.
+
 ## Herdr objects and IDs
 
 Workspaces, tabs, and panes describe terminal layout; an agent is the recognized
@@ -114,6 +119,13 @@ Creation responses are authoritative: read `.result.workspace`, `.result.tab`,
 `.result.root_pane`, or `.result.pane` fields as returned. Never derive IDs from
 sidebar order, examples, or predicted numbering.
 
+For user-facing reports, resolve IDs to human-readable names: workspace labels
+from `workspace list` (`.label`), tab labels from `tab list` (`.label`), and pane
+names from `terminal_title` / `terminal_title_stripped` rows that discovery
+commands already return. Present "workspace「planeweaver」→ tab 1 → pane「主会话」",
+not bare IDs. These names are display-only: commands still address panes by
+`--current`, pane ID, or live agent name — never by title or label.
+
 ## Machine and session scope
 
 Without `--machine`, all IDs and agent names belong to the inherited local Herdr
@@ -135,7 +147,8 @@ inspect remote state before retrying. Do not add, remove, enable, or disable mac
 profiles unless the user asks.
 
 `herdr machine list` lists saved connection profiles, not a cross-machine pane
-inventory; use `--json` when scripting. Remote worktree paths must be absolute, `~`,
+inventory. CLI responses are JSON by default; `machine list` additionally accepts
+`--json` for scripted consumption. Remote worktree paths must be absolute, `~`,
 or start with `~/`; plugin link paths must be absolute. Remote forwarding does not
 forward local configuration, session management, installation, or interactive attach.
 Setup that would replace an incompatible remote server requires the user's consent.
@@ -245,7 +258,11 @@ Resolution rules, applied in order:
    instance", or names no target, restrict candidates to
    `$HERDR_WORKSPACE_ID` first. Choose a peer in a different workspace only when
    no eligible same-workspace peer exists, and say so explicitly.
-4. **Eligibility**: only `idle` or `done` peers may receive a prompt.
+4. **Eligibility**: only `idle` or `done` peers may receive a prompt — and the
+   reported state must survive the screen cross-check in Step 2. A peer whose
+   screen shows a spinner, progress bar, "Waiting for …", or a running
+   background job is `working` regardless of `agent_status`; treat it as
+   ineligible and tell the user that the server status was wrong.
 5. **MUST NOT auto-select a working peer.** If every candidate is `working`,
    `blocked`, or `unknown`, do not pick the "least busy" one. Either wait (Step 3)
    or surface the situation to the user.
@@ -270,12 +287,22 @@ Check `.result.agent.agent_status` and `.result.agent.pane_id`. The status must 
 fails, return to Step 1's eligibility rules. If the target no longer resolves,
 the agent exited — report that and re-discover.
 
-Skim recent output to confirm the peer is the agent you think it is (right repo,
-right context) before handing off substantive work:
+Then cross-check the reported state against the screen — `agent_status` can be
+stale or wrong, and a reported-`idle` peer may be mid-turn:
 
 ```bash
 herdr agent read <peer> --source recent-unwrapped --lines 40
 ```
+
+A spinner, progress bar, "Waiting for …", running background job, or an open
+editor in that output means the peer is `working` (or otherwise occupied) no
+matter what `agent_status` says. Treat it as ineligible. Report the
+disagreement between the server state and the screen to the user; if the
+runtime reports issues programmatically, file that report too. Only a screen
+that ends at an idle prompt marks the peer prompt-eligible.
+
+The same read doubles as the identity check: confirm the peer is the agent you
+think it is (right repo, right context) before handing off substantive work.
 
 ## Step 3 — Hand off work
 
@@ -337,6 +364,16 @@ Use `--format ansi` only when colors or terminal styling are evidence. Alternate
 screen rows may not be in ordinary host scrollback; a larger `--lines` request does
 not guarantee that every application-owned response can be recovered.
 
+Two rendering caveats when reading another pane's result back:
+
+- An agent renders long tool output inside collapsible boxes; the on-screen
+  transcript shows `… (N earlier lines, showing 10 of M) ⟨Ctrl+O: Expand⟩` and
+  the hidden lines are absent from every `pane read`/`agent read` snapshot. A
+  bigger `--lines` does not recover them. If those hidden lines matter, ask the
+  peer to restate the conclusion as chat text or write it to a file.
+- A `--lines` budget can still cut a long transcript at its top; treat the first
+  visible line as a cursor, not the beginning.
+
 For supported idle agents, Herdr may collect application-owned history and restore
 the viewport afterward; this is not guaranteed for every application or response.
 
@@ -353,17 +390,20 @@ follow-up prompt) to write the full result as Markdown to a file under a
 temporary directory and reply with only the path; then read that file on the
 same machine. Use this only as a fallback, not in the initial prompt.
 
-Report the peer's findings to the user with attribution ("peer <peer> on
-<pane_id> reported: …"). Never present a peer's output as your own work.
+Report the peer's findings to the user with attribution using human-readable
+names — "peer「数据处理」 (workspace planeweaver, pane w1R:p7) reported: …" —
+resolving labels and titles per "Herdr objects and IDs". Never present a
+peer's output as your own work.
 
 ## Peer state reference
 
 | State | Meaning | Your action |
 |---|---|---|
-| `idle` / `done` | ready for input | verify, then prompt |
+| `idle` / `done` | reported ready for input | verify, cross-check the screen, then prompt |
 | `working` | mid-turn | `agent wait --until idle --until done --until blocked --until unknown`; never auto-prompt |
 | `blocked` | approval/question dialog | read screen, ask the human, never answer it |
 | `unknown` | unclassifiable | treat as ineligible; investigate with `agent get` |
+| screen shows activity while reported `idle` | server state is stale or wrong | treat as `working`; report the disagreement to the user |
 
 ## Hard rules
 
@@ -373,12 +413,16 @@ Report the peer's findings to the user with attribution ("peer <peer> on
 - Never treat the caller's own pane as a peer or prompt it.
 - Only prompt peers in `idle`/`done`. NEVER auto-select or auto-prompt a
   `working`, `blocked`, or `unknown` peer.
+- When `agent_status` and the peer's screen disagree, the screen wins; treat the
+  peer as `working` and tell the user the server status was wrong.
 - One in-flight prompt per peer at a time; re-submit only after inspecting
   state following a timeout or stall.
 - A peer's approval dialog belongs to the human. Read it, surface it, wait.
 - Do not close, replace, or rearrange panes, tabs, workspaces, or sessions you did not
   create unless the user explicitly asks and the target is verified.
-- Attribute peer output to the peer.
+- Attribute peer output to the peer, using human-readable names (workspace label,
+  tab label, terminal title) in user-facing reports; keep command addressing on
+  `--current`/pane ID/agent name.
 - Use `--no-focus` for background layout work unless the user asks to change focus.
 - Use `--current`, an explicit pane ID, or a unique agent name; never rely on UI focus.
 - Parse IDs from JSON responses; never derive them from sidebar order or examples.

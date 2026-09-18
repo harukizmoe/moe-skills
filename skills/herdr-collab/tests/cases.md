@@ -136,6 +136,31 @@ Expected:
   Inspect `agent get` + `agent read` before any re-submit.
   MUST NOT blindly re-send the same prompt.
 
+## CASE: reported idle but screen shows working
+
+Given:
+  `agent get` reports peer status `idle`
+  the peer's screen shows a spinner, progress bar, "Waiting for …",
+  or a running background job
+
+User:
+  让它帮忙 review
+
+Expected:
+  Treats the peer as `working` regardless of `agent_status`; the screen wins.
+  Does not prompt it. Reports the server/screen disagreement to the user.
+  MUST NOT trust the reported `idle` state over visible activity.
+
+## CASE: user-facing report uses readable names
+
+Given:
+  peers resolvable via workspace labels, tab labels, and terminal titles
+
+Expected:
+  Reports use "workspace「planeweaver」→ tab 1 → pane「数据处理」" style names.
+  MUST NOT present bare IDs like `w1R:p7` as the only identification.
+  Commands still address panes by `--current`, pane ID, or agent name.
+
 ## CASE: oversized response
 
 Given:
