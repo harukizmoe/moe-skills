@@ -1,0 +1,18 @@
+# Project-local settings for the AI workflow kit.
+#
+# Only keys this project actually needs to differ on. Everything else inherits
+# from global config, and arrays here replace global arrays wholesale, so a key
+# is set here only when its inherited value would break the workflow.
+
+task:
+  # Structured handoffs: `task` subagents get `yield` + schema validation, so a
+  # Developer/Reviewer result is machine-checkable instead of prose.
+  structured: true
+  # Reviewers must be able to resolve symbols in the diff they are judging.
+  enableLsp: true
+  isolation:
+    # Parallel coding needs its own working tree; without this an `isolated`
+    # spawn cannot even be requested.
+    enabled: true
+    apply: true
+    merge: patch
