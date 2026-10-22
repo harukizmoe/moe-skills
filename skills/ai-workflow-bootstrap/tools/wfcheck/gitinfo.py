@@ -21,11 +21,13 @@ from pathlib import Path
 UNBORN = "0" * 40
 # The empty tree: the honest start of a range for a repository's first task.
 EMPTY_TREE = "4b825dc642cb6eb9a060e54bf8d69288fbee4904"
-# Vendored tooling, not authored work. The installer puts these in place; counting
-# them would make a project's first task look like a thousand-line change and
-# demand a review for installing the kit.
-VENDORED = ("tools/wfcheck", "scripts")
+# The gate, its entry points, and the workflow's own records all live under
+# STATE_DIR, so excluding that one directory keeps vendored tooling out of the
+# change-size measurement: installing the workflow is not authored work.
 STATE_DIR = ".ai-workflow"
+# The one file a project edits; it lives inside STATE_DIR so no project file can
+# collide with it.
+STATE_CONFIG = f"{STATE_DIR}/config.sh"
 
 
 class GitError(RuntimeError):
@@ -232,7 +234,6 @@ def diff_size(repo: Path, base: str, rev: str = "HEAD") -> int:
     the kind of value an agent can lie about.
     """
     excludes = [f":(exclude){STATE_DIR}"]
-    excludes += [f":(exclude){path}" for path in VENDORED]
     out = _git(repo, "diff", "--numstat", base, rev, "--", ".", *excludes)
     total = 0
     for line in out.splitlines():

@@ -16,6 +16,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from .gitinfo import (
+    STATE_CONFIG,
     UNBORN,
     GitError,
     change_base,
@@ -36,7 +37,7 @@ REQUIRED_EVIDENCE = ("test", "check")
 # A change of at most this many lines needs no reviewer: the evidence re-run is
 # already an independent check, and a review round costs minutes to tens of
 # minutes. Over it, a reviewer must name the commit. The number is a project
-# decision, so `scripts/config.sh` supplies it; this is the default.
+# decision, so `.ai-workflow/config.sh` supplies it; this is the default.
 DEFAULT_REVIEW_THRESHOLD = 400
 
 
@@ -145,12 +146,12 @@ class Workspace:
 
 
 def _review_threshold(root: Path) -> int:
-    """Lines a change may touch before it needs a reviewer, from scripts/config.sh.
+    """Lines a change may touch before it needs a reviewer, from .ai-workflow/config.sh.
 
     Read once per Workspace so every caller agrees: a threshold supplied per call
     is a second source of truth, and the one the gate happened to be given wins.
     """
-    script = root / "scripts" / "config.sh"
+    script = root / STATE_CONFIG
     if not script.is_file():
         return DEFAULT_REVIEW_THRESHOLD
     proc = subprocess.run(

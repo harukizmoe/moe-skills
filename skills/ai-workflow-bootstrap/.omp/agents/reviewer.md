@@ -63,7 +63,7 @@ coordinator decides whether to spend a deep round.
   the fix proves nothing. Name the specific test if it is the problem.
 - Does the code add an abstraction, config knob, or fallback the task did not
   need?
-- Run `scripts/verify-handoff.sh <TASK>` once. If it passes, do not re-derive
+- Run `.ai-workflow/bin/verify-handoff.sh <TASK>` once. If it passes, do not re-derive
   what it already checked; it has re-run the evidence.
 
 ## Verdict rules

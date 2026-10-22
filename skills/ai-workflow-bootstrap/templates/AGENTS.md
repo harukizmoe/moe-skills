@@ -1,7 +1,7 @@
 # AGENTS.md
 
 This project runs the AI workflow kit: a task is not done because an agent says
-so, it is done when `scripts/verify-handoff.sh` agrees.
+so, it is done when `.ai-workflow/bin/verify-handoff.sh` agrees.
 
 Replace this file's body with the project's own rules. Keep only what changes an
 agent's decisions; a longer file is not a better one.
@@ -9,13 +9,13 @@ agent's decisions; a longer file is not a better one.
 ## Commands
 
 ```sh
-scripts/test.sh                    # test suite        (WF_TASK=<id> records evidence)
-scripts/check.sh                   # compile/lint      (WF_TASK=<id> records evidence)
-scripts/smoke-test.sh              # end-to-end        (WF_TASK=<id> records evidence)
-scripts/verify-handoff.sh <TASK>   # merge gate: artifacts + re-execution
+.ai-workflow/bin/test.sh                    # test suite        (WF_TASK=<id> records evidence)
+.ai-workflow/bin/check.sh                   # compile/lint      (WF_TASK=<id> records evidence)
+.ai-workflow/bin/smoke-test.sh              # end-to-end        (WF_TASK=<id> records evidence)
+.ai-workflow/bin/verify-handoff.sh <TASK>   # merge gate: artifacts + re-execution
 ```
 
-Command definitions live in `scripts/config.sh`. Nothing else knows the language.
+Command definitions live in `.ai-workflow/config.sh`. Nothing else knows the language.
 
 ## Authority
 
@@ -36,7 +36,7 @@ are not.
 ## Non-negotiables
 
 1. `evidence/` is written only by the scripts. Never hand-write it.
-2. The commands come from `scripts/config.sh` alone — not from a flag, not from
+2. The commands come from `.ai-workflow/config.sh` alone — not from a flag, not from
    the environment. Editing that file is the only way to change what "verified"
    means, and edits there are reviewed.
 3. A handoff is a claim. `verify-handoff.sh` re-runs its commands and refuses on

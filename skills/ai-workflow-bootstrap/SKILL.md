@@ -4,7 +4,7 @@ description: "Initialise a repository-level AI coding workflow in a project you 
 license: MIT
 compatibility: "Requires git, sh, and Python 3.8+. Tested on Linux and macOS. Installs into a repository of any language."
 metadata:
-  version: 0.1.0
+  version: 0.2.0
   owner: harukizmoe
   source: https://github.com/harukizmoe/moe-skills
 ---
@@ -20,7 +20,7 @@ The assets sit next to this file; install them rather than retyping them:
 | Path | Contents |
 | --- | --- |
 | `tools/wfcheck/` | the gate: reads git and JSON, writes only artifacts |
-| `scripts/` | `install.sh` plus the entry points a project calls |
+| `scripts/` | `install.sh` and the entry points, copied into `.ai-workflow/bin/` |
 | `templates/` | what gets copied into the project |
 | `.omp/agents/` | architect / developer / reviewer definitions |
 
@@ -48,23 +48,24 @@ sh scripts/install.sh <project-dir>
 ```
 
 Safe on an empty directory, safe to re-run, never overwrites an existing file.
-It writes `tools/wfcheck/`, `scripts/`, an `AGENTS.md`, `.ai-workflow/`, and
-`.omp/agents/`.
+Everything it installs lives under `.ai-workflow/` — `gate/`, `bin/`, `config.sh`,
+and the records — plus an `AGENTS.md` and `.omp/agents/`. Nothing appears at the
+project root, so your own `scripts/` or `config.sh` is never shadowed.
 
 Then, in the project:
 
 1. `git init` if it is not a repository yet, and commit the skeleton. The gate
    compares commits; before the first one there is nothing to compare.
-2. Edit `scripts/config.sh` so `WF_TEST` / `WF_CHECK` name this project's real
+2. Edit `.ai-workflow/config.sh` so `WF_TEST` / `WF_CHECK` name this project's real
    commands. Leave them empty to let detection pick a toolchain (Go, Cargo, Bun,
    npm, pytest, Make). If detection is wrong or absent, set them explicitly:
    empty and undetectable means the gate refuses rather than guessing, which is
    the correct behavior.
-3. `WF_TASK=T-001 sh scripts/test.sh` runs the command and records what happened.
-   Run it again after any code change; evidence describes content, not intent.
+3. `PYTHONPATH=.ai-workflow/gate python3 -m wfcheck --root . finish --task T-001`
+   runs the declared commands, records what happened, and gates the result.
 
-The kit's own `tools/` and `scripts/` are excluded from change-size measurement,
-so installing the workflow does not make a project's first task look like a
+Everything under `.ai-workflow/` is excluded from change-size measurement, so
+installing the workflow does not make a project's first task look like a
 thousand-line change.
 
 ## Fill in the contract before writing code
@@ -83,22 +84,30 @@ task is the right task, so the human-shaped part happens first, in this order:
 
 ## The loop for each task
 
+Three steps. You do the first; `finish` does the rest.
+
 ```sh
-# implement
-WF_TASK=T-NNN sh scripts/test.sh     # runs and records
-WF_TASK=T-NNN sh scripts/check.sh
+# 1. implement, and commit the code — the handoff must name a commit
 git add -A && git commit -m "feat: ..."
 
-PYTHONPATH=tools python3 -m wfcheck --root . handoff --task T-NNN \
-    --evidence .ai-workflow/evidence/T-NNN-test.json \
-               .ai-workflow/evidence/T-NNN-check.json
-git add -A && git commit -m "chore: handoff"
+# 2. run the evidence, record the handoff, commit it, and gate — one command
+PYTHONPATH=.ai-workflow/gate python3 -m wfcheck --root . finish --task T-NNN
 
-sh scripts/verify-handoff.sh T-NNN   # the gate
+# 3. `gate T-NNN PASS` means settled; otherwise read the named problem
 ```
 
-Committing the handoff after the code is the normal shape; the gate knows that a
-state-only commit is bookkeeping, not unreviewed work.
+`finish` is not a shortcut that skips checking: it runs every declared command,
+records the real exit codes, writes the handoff, commits the state, then runs the
+gate — including re-running the evidence. It refuses exactly the two cases that
+used to become silent mistakes:
+
+- **uncommitted work** — a handoff names a commit, and uncommitted content has none;
+- **a failing command** — the record is still written (a failure is the most
+  important thing to keep), and no handoff is created, so nothing claims success.
+
+Reach for the granular commands only when you need one piece at a time:
+`.ai-workflow/bin/test.sh` runs without recording, `wfcheck evidence --task`
+records a single kind, `wfcheck handoff` writes a handoff by hand.
 
 **Review is spent in proportion to size.** `WF_REVIEW_MAX` (default 400) is the
 number of changed lines that requires a reviewer. Under it, a task settles on
@@ -106,7 +115,7 @@ evidence alone — the gate already re-ran the commands. Over it, dispatch the
 `reviewer` agent and record its verdict:
 
 ```sh
-PYTHONPATH=tools python3 -m wfcheck --root . review --task T-NNN --verdict approved
+PYTHONPATH=.ai-workflow/gate python3 -m wfcheck --root . review --task T-NNN --verdict approved
 ```
 
 Size is computed from git over the task's range, excluding `.ai-workflow/`, so it
@@ -116,8 +125,8 @@ size and the limit, so a skipped review is visible rather than silent.
 ## Check state, never ask
 
 ```sh
-PYTHONPATH=tools python3 -m wfcheck --root . status   # every task, and its gate
-PYTHONPATH=tools python3 -m wfcheck --root . ready    # what a developer can start
+PYTHONPATH=.ai-workflow/gate python3 -m wfcheck --root . status   # every task, and its gate
+PYTHONPATH=.ai-workflow/gate python3 -m wfcheck --root . ready    # what a developer can start
 ```
 
 States are derived from artifacts: `todo` (no handoff), `review` (handoff at HEAD,
@@ -144,7 +153,7 @@ so never let one agent occupy both roles for the same task.
 - **Recording evidence before the last edit.** Evidence is bound to a tree hash, so
   the edit invalidates it. Re-run after changing code.
 - **Trying to supply the command.** `--command` does not exist and `WF_TEST` in the
-  environment is ignored; the project's `scripts/config.sh` is the only authority.
+  environment is ignored; the project's `.ai-workflow/config.sh` is the only authority.
   Do not "fix" that by adding a flag — the caller is the party being checked.
 - **Expecting a review for a two-line fix.** Under the limit there is none, by
   design. To require one for everything, set `WF_REVIEW_MAX=0`.
@@ -164,5 +173,5 @@ the ones that change an agent's behavior.
 
 ## Uninstall
 
-Delete `tools/wfcheck/`, `scripts/`, `.omp/agents/`, and `.ai-workflow/`. The gate
-keeps no state outside `.ai-workflow/` and writes nothing else.
+Delete `.ai-workflow/` and `.omp/agents/`. The workflow keeps no state elsewhere and
+writes nothing else.

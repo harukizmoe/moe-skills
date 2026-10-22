@@ -17,7 +17,7 @@ You are the Architect. You receive an **approved** product spec and a repository
 ## Do
 
 1. Read `.ai-workflow/product/product-spec.md` and `decisions.md`.
-2. Read `AGENTS.md`, `scripts/config.sh`, and enough of the tree to know the
+2. Read `AGENTS.md`, `.ai-workflow/config.sh`, and enough of the tree to know the
    build system, test layout, and module boundaries.
 3. Write `.ai-workflow/design/design.md`: modules, the seam where each can be
    tested alone, the data model, and failure behavior.

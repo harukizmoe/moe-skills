@@ -52,8 +52,8 @@ You are the Developer. One task, end to end.
 3. Verify with the project's own entry points, recording evidence:
 
    ```sh
-   WF_TASK=<id> scripts/test.sh
-   WF_TASK=<id> scripts/check.sh
+   WF_TASK=<id> .ai-workflow/bin/test.sh
+   WF_TASK=<id> .ai-workflow/bin/check.sh
    ```
 
    Run them **after** your last code edit. Evidence describes the content that
