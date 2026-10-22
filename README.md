@@ -8,6 +8,7 @@ installable.
 
 | Skill | Description | Version |
 |---|---|---|
+| [ai-workflow-bootstrap](skills/ai-workflow-bootstrap/) | Initialise a repository-level AI coding workflow with a gate that refuses agent self-reports: evidence bound to a content hash, reviews that name the commit they judged, and architect/developer/reviewer roles. | 0.2.0 |
 | [herdr-collab](skills/herdr-collab/) | Herdr layout and pane commands plus agent lifecycle: create panes, start agents, discover, verify, prompt, and read coding-agent results. | 0.1.2 |
 
 ## Installation

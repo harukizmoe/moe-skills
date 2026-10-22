@@ -1,0 +1,10 @@
+{
+  "tasks": [
+    {
+      "id": "T-001",
+      "title": "First task",
+      "depends_on": [],
+      "acceptance": ["observable result 1", "observable result 2"]
+    }
+  ]
+}
