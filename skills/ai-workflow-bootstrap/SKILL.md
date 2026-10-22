@@ -4,7 +4,7 @@ description: "Initialise a repository-level AI coding workflow in a project you 
 license: MIT
 compatibility: "Requires git, sh, and Python 3.8+. Tested on Linux and macOS. Installs into a repository of any language."
 metadata:
-  version: 0.2.0
+  version: 0.3.0
   owner: harukizmoe
   source: https://github.com/harukizmoe/moe-skills
 ---
