@@ -25,6 +25,7 @@ from pathlib import Path
 
 from . import gitinfo
 from .gitinfo import STATE_CONFIG
+from . import model
 from .model import EVIDENCE_KINDS, Review, SchemaError
 from .rules import (
     REQUIRED_EVIDENCE,
@@ -57,6 +58,25 @@ def _now() -> str:
 def _write(path: Path, payload: dict) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(payload, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+
+
+def _add_author_args(p: argparse.ArgumentParser) -> None:
+    """The identity of the agent that did the work.
+
+    Required, so a handoff cannot silently omit it, and role-checked, so the
+    coordinator cannot hand a task off in its own name.
+    """
+    p.add_argument(
+        "--author",
+        required=True,
+        help="the agent that implemented this task, e.g. DevT004",
+    )
+    p.add_argument(
+        "--author-role",
+        default="developer",
+        choices=sorted(model.AUTHOR_ROLES),
+        help="the role that implemented it (default: developer)",
+    )
 
 
 def _root(args: argparse.Namespace) -> Path:
@@ -235,6 +255,8 @@ def cmd_finish(args: argparse.Namespace) -> int:
         "commit_sha": gitinfo.head_sha(root),
         "tree": gitinfo.worktree_tree(root),
         "evidence": [f".ai-workflow/evidence/{task_id}-{kind}.json" for kind in kinds],
+        "author": args.author,
+        "author_role": args.author_role,
         "recorded_at": _now(),
     }
     target = root / ".ai-workflow" / "handoffs" / f"{task_id}.json"
@@ -296,6 +318,8 @@ def cmd_handoff(args: argparse.Namespace) -> int:
         "commit_sha": head,
         "tree": tree,
         "evidence": list(args.evidence),
+        "author": args.author,
+        "author_role": args.author_role,
         "recorded_at": _now(),
     }
     target = root / ".ai-workflow" / "handoffs" / f"{task_id}.json"
@@ -321,16 +345,44 @@ def cmd_review(args: argparse.Namespace) -> int:
         _fail("an approved review cannot carry blocker findings")
     if args.verdict == "changes_requested" and not findings:
         _fail("changes_requested needs at least one finding")
-    head = gitinfo.head_sha(root)
-    reviewed = args.reviewed_sha or head
+    # Default to the commit the handoff names, not HEAD. `finish` commits the
+    # handoff, so HEAD is the bookkeeping commit that follows the work; a review
+    # of HEAD would be stale the moment it was written, for every task that
+    # needed one.
+    reviewed = args.reviewed_sha
+    if not reviewed:
+        handoff_path = ws.path("handoffs", f"{task_id}.json")
+        if not handoff_path.is_file():
+            _fail(
+                f"no handoff for task {task_id} yet: there is nothing to review. "
+                "Record the work with `finish` first, or pass --reviewed-sha."
+            )
+        reviewed = ws.handoff(task_id).commit_sha
+        print(f"reviewing the handoff's commit {reviewed[:12]}")
     if not gitinfo.commit_exists(root, reviewed):
         _fail(f"reviewed commit {reviewed} is not in this repository")
+    # Refuse self-review here, where the message can name both agents, instead
+    # of only when the task is gated. Unconditional: a first review of a task
+    # whose handoff is already committed is still self-review if the names match.
+    handoff_path = ws.path("handoffs", f"{task_id}.json")
+    if handoff_path.is_file():
+        try:
+            author = ws.handoff(task_id).author
+        except SchemaError:
+            author = ""
+        if author and author.strip() == args.reviewer.strip():
+            _fail(
+                f"'{args.reviewer}' handed task {task_id} off and cannot review it; "
+                "dispatch a reviewer agent"
+            )
     payload = {
         "task_id": task_id,
         "round": expected,
         "reviewed_sha": reviewed,
         "verdict": args.verdict,
         "findings": findings,
+        "reviewer": args.reviewer,
+        "reviewer_role": args.reviewer_role,
         "reviewed_at": _now(),
     }
     target = root / ".ai-workflow" / "reviews" / f"{task_id}-r{expected}.json"
@@ -474,6 +526,7 @@ def main(argv: list[str] | None = None) -> int:
 
     p = sub.add_parser("finish", help="run evidence, record the handoff, commit, and gate")
     p.add_argument("--task", required=True)
+    _add_author_args(p)
     p.add_argument(
         "--kind",
         choices=sorted(EVIDENCE_KINDS),
@@ -484,10 +537,22 @@ def main(argv: list[str] | None = None) -> int:
     p = sub.add_parser("handoff", help="record a developer handoff")
     p.add_argument("--task", required=True)
     p.add_argument("--evidence", nargs="+", default=[])
+    _add_author_args(p)
     p.set_defaults(func=cmd_handoff)
 
     p = sub.add_parser("review", help="record a reviewer verdict")
     p.add_argument("--task", required=True)
+    p.add_argument(
+        "--reviewer",
+        required=True,
+        help="the agent whose verdict this is; it may not be the handoff's author",
+    )
+    p.add_argument(
+        "--reviewer-role",
+        default="reviewer",
+        choices=sorted(model.REVIEWER_ROLES),
+        help="the role that produced this verdict (default: reviewer)",
+    )
     p.add_argument("--verdict", required=True, choices=["approved", "changes_requested"])
     p.add_argument("--reviewed-sha", default="")
     p.add_argument("--finding", action="append", default=[], metavar="SEVERITY:ID:SUMMARY")

@@ -15,6 +15,11 @@ from typing import Any
 VERDICTS = {"approved", "changes_requested"}
 SEVERITIES = {"blocker", "major", "minor"}
 EVIDENCE_KINDS = {"test", "check", "smoke"}
+# Who may hand a task off, and who may approve one. A handoff written by the
+# coordinator that also approves it is the failure mode this kit exists to
+# prevent, so the two roles are recorded rather than inferred from prose.
+AUTHOR_ROLES = {"developer"}
+REVIEWER_ROLES = {"reviewer"}
 
 
 class SchemaError(ValueError):
@@ -79,6 +84,12 @@ class Handoff:
     commit_sha: str
     tree: str
     evidence: tuple[str, ...]
+    # author and author_role record who claims the work. They are required, so a
+    # handoff cannot omit them, and the gate refuses a role other than
+    # `developer`: the agent that implements a task is not the one that decides
+    # its scope or approves it.
+    author: str
+    author_role: str
 
     @classmethod
     def load(cls, path: Path) -> Handoff:
@@ -87,12 +98,23 @@ class Handoff:
         evidence = _require(data, "evidence", list, where)
         if any(not isinstance(item, str) for item in evidence):
             raise SchemaError(f"{where}: 'evidence' must list paths")
+        author = _require(data, "author", str, where)
+        role = _require(data, "author_role", str, where)
+        if not author.strip():
+            raise SchemaError(f"{where}: 'author' must name the agent that did the work")
+        if role not in AUTHOR_ROLES:
+            raise SchemaError(
+                f"{where}: 'author_role' is '{role}', which may not hand off a task; "
+                f"expected one of {sorted(AUTHOR_ROLES)}"
+            )
         return cls(
             path=path,
             task_id=_require(data, "task_id", str, where),
             commit_sha=_require(data, "commit_sha", str, where),
             tree=_require(data, "tree", str, where),
             evidence=tuple(evidence),
+            author=author,
+            author_role=role,
         )
 
 
@@ -104,6 +126,11 @@ class Review:
     reviewed_sha: str
     verdict: str
     findings: tuple[Finding, ...] = field(default=())
+    # reviewer names the agent whose verdict this is. The gate refuses a review
+    # whose reviewer is the handoff's author, and one naming a role that is not
+    # `reviewer`.
+    reviewer: str = ""
+    reviewer_role: str = ""
 
     @classmethod
     def load(cls, path: Path) -> Review:
@@ -127,6 +154,15 @@ class Review:
                     summary=_require(item, "summary", str, f"{where}:finding"),
                 )
             )
+        reviewer = _require(data, "reviewer", str, where)
+        role = _require(data, "reviewer_role", str, where)
+        if not reviewer.strip():
+            raise SchemaError(f"{where}: 'reviewer' must name the agent that judged the commit")
+        if role not in REVIEWER_ROLES:
+            raise SchemaError(
+                f"{where}: 'reviewer_role' is '{role}', which may not approve work; "
+                f"expected one of {sorted(REVIEWER_ROLES)}"
+            )
         return cls(
             path=path,
             task_id=_require(data, "task_id", str, where),
@@ -134,6 +170,8 @@ class Review:
             reviewed_sha=_require(data, "reviewed_sha", str, where),
             verdict=verdict,
             findings=tuple(findings),
+            reviewer=reviewer,
+            reviewer_role=role,
         )
 
 

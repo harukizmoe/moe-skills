@@ -41,6 +41,69 @@ Expected:
   `status` shows the task `merged`.
   `git status --porcelain` is empty afterwards: `finish` committed the state.
 
+## CASE: a handoff must name its author
+
+Given:
+  a bootstrapped project with a passing suite
+
+Steps:
+  PYTHONPATH=.ai-workflow/gate python3 -m wfcheck --root . finish --task T-001
+
+Expected:
+  exits 2 with argparse naming `--author` as required. Omit it and there is no
+  handoff, no evidence, and no commit.
+
+## CASE: only a developer may hand a task off
+
+Given:
+  a project whose handoff file claims `"author_role": "lead"`
+
+Steps:
+  PYTHONPATH=.ai-workflow/gate python3 -m wfcheck --root . gate --task T-001
+
+Expected:
+  refused with `handoff-missing` naming the role. Editing the JSON by hand cannot
+  produce a signature the gate accepts; only `finish --author` writes one.
+
+## CASE: an agent cannot approve what it handed off
+
+Given:
+  a task handed off by `DevProbe`, `WF_REVIEW_MAX="0"` so a review is required
+
+Steps:
+  PYTHONPATH=.ai-workflow/gate python3 -m wfcheck --root . review --task T-001 \
+      --verdict approved --reviewer DevProbe
+
+Expected:
+  exits 1 with "'DevProbe' handed task T-001 off and cannot review it".
+  The same review with `--reviewer ReviewProbe` is accepted.
+
+## CASE: a hand-written self-review is refused by the gate
+
+Given:
+  a handoff authored by `DevProbe`, and `.ai-workflow/reviews/T-001-r1.json`
+  written by hand with `"reviewer": "DevProbe"`
+
+Steps:
+  PYTHONPATH=.ai-workflow/gate python3 -m wfcheck --root . gate --task T-001
+
+Expected:
+  refused with `review-self`, naming the round and the agent, in addition to any
+  staleness problem. The CLI check can be bypassed by writing the file; the gate
+  check cannot.
+
+## CASE: a review must name a reviewer
+
+Given:
+  a review file without `reviewer` or `reviewer_role`
+
+Steps:
+  PYTHONPATH=.ai-workflow/gate python3 -m wfcheck --root . status
+
+Expected:
+  exits 1 naming the missing key. An anonymous approval is not an approval: the
+  identity is what makes self-review detectable.
+
 ## CASE: a dirty tree is refused
 
 Given:
