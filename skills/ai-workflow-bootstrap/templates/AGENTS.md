@@ -33,15 +33,30 @@ are not.
 | `reviews/<TASK>-r<N>.json` | reviewer verdicts, one per round |
 | `evidence/<TASK>-<KIND>.json` | what actually ran, and on which content |
 
+## Who does what
+
+The main session coordinates: it owns the spec, the scope, and the task graph, and
+it decides when a task is settled. It does not write product code — a developer
+agent does, one task per spawn — and it never approves work it implemented itself,
+which the gate refuses as `review-self`.
+
+| Role | Who | Does |
+| --- | --- | --- |
+| coordinator | main session | spec, decisions, tasks; dispatch; run `finish` and reviews |
+| developer | `.omp/agents/developer.md` | one task end to end; sign the handoff with `--author` |
+| architect | `.omp/agents/architect.md` | turn an approved spec into design and tasks |
+| reviewer | `.omp/agents/reviewer.md` | judge one commit with `--reviewer` |
+
 ## Non-negotiables
 
 1. `evidence/` is written only by the scripts. Never hand-write it.
 2. The commands come from `.ai-workflow/config.sh` alone — not from a flag, not from
    the environment. Editing that file is the only way to change what "verified"
    means, and edits there are reviewed.
-3. A handoff is a claim. `verify-handoff.sh` re-runs its commands and refuses on
-   mismatch; there is no flag to skip the re-run.
-4. A review covers exactly the commit it names. New commit, new review.
+3. A handoff is a claim, and it names its `author`. `verify-handoff.sh` re-runs its
+   commands and refuses on mismatch; there is no flag to skip the re-run.
+4. A review covers exactly the commit it names, and it names its `reviewer`. New
+   commit, new review. The reviewer may not be the handoff's author.
 5. Passing tests does not mean the requirement is met; acceptance comes from the
    product spec, not from what the system returned.
 6. A task's state is derived from its artifacts (`todo` / `review` / `revise` /

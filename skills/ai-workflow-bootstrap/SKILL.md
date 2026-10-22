@@ -61,8 +61,9 @@ Then, in the project:
    npm, pytest, Make). If detection is wrong or absent, set them explicitly:
    empty and undetectable means the gate refuses rather than guessing, which is
    the correct behavior.
-3. `PYTHONPATH=.ai-workflow/gate python3 -m wfcheck --root . finish --task T-001`
+3. `PYTHONPATH=.ai-workflow/gate python3 -m wfcheck --root . finish --task T-001 --author <agent>`
    runs the declared commands, records what happened, and gates the result.
+   `--author` names the developer agent that did the work, and is required.
 
 Everything under `.ai-workflow/` is excluded from change-size measurement, so
 installing the workflow does not make a project's first task look like a
@@ -87,14 +88,25 @@ task is the right task, so the human-shaped part happens first, in this order:
 Three steps. You do the first; `finish` does the rest.
 
 ```sh
-# 1. implement, and commit the code — the handoff must name a commit
+# 1. the developer agent implements, and commits the code — a handoff names a commit
 git add -A && git commit -m "feat: ..."
 
 # 2. run the evidence, record the handoff, commit it, and gate — one command
-PYTHONPATH=.ai-workflow/gate python3 -m wfcheck --root . finish --task T-NNN
+PYTHONPATH=.ai-workflow/gate python3 -m wfcheck --root . finish --task T-NNN --author DevT-NNN
 
 # 3. `gate T-NNN PASS` means settled; otherwise read the named problem
 ```
+
+**Who did the work is part of the record.** A handoff carries `author` and
+`author_role`; a review carries `reviewer` and `reviewer_role`. Both are
+required, both are role-checked (`developer` to hand off, `reviewer` to
+approve), and the gate refuses a review whose reviewer is the handoff's author
+(`review-self`). This exists because a purely mechanical gate cannot otherwise
+tell a developer's work from the coordinator's: an agent that writes the
+implementation itself can produce evidence and a passing gate, and nothing in
+the artifacts would say so. Recording the identity does not prove who typed the
+code — nothing local can — but it makes the claim explicit, attributable, and
+refusable when it contradicts itself.
 
 `finish` is not a shortcut that skips checking: it runs every declared command,
 records the real exit codes, writes the handoff, commits the state, then runs the
@@ -115,8 +127,13 @@ evidence alone — the gate already re-ran the commands. Over it, dispatch the
 `reviewer` agent and record its verdict:
 
 ```sh
-PYTHONPATH=.ai-workflow/gate python3 -m wfcheck --root . review --task T-NNN --verdict approved
+PYTHONPATH=.ai-workflow/gate python3 -m wfcheck --root . review --task T-NNN \
+    --verdict approved --reviewer ReviewT-NNN [--finding SEVERITY:ID:SUMMARY ...]
 ```
+
+`--reviewer` is required and may not match the handoff's `author`: the command
+refuses, and the gate refuses with `review-self` if the record was written by
+hand.
 
 Size is computed from git over the task's range, excluding `.ai-workflow/`, so it
 cannot be declared and cannot be raised with a flag. `status` and `gate` print the

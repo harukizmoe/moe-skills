@@ -4,6 +4,26 @@ All notable changes to the `ai-workflow-bootstrap` skill.
 Format: Keep a Changelog; versioning: SemVer. Versions are tagged
 `ai-workflow-bootstrap/vX.Y.Z`.
 
+## 0.3.0 - 2026-10-22
+
+- **Who did the work is now part of the record.** A handoff requires `author` and
+  `author_role`, a review requires `reviewer` and `reviewer_role`; both are
+  role-checked (`developer` to hand off, `reviewer` to approve). The gate refuses
+  a review whose reviewer is the handoff's author (`review-self`), and
+  `wfcheck review` refuses at record time with both names in the message.
+- Why: the gate could not previously distinguish a developer's work from the
+  coordinator's. An agent that wrote the implementation itself — instead of
+  delegating it — produced evidence and a passing gate, and no artifact said so.
+  A local check still cannot prove who typed the code; recording the identity
+  makes the claim explicit, attributable, and refusable when it contradicts
+  itself.
+- `finish` and `handoff` gained a required `--author`; `review` gained a required
+  `--reviewer`. Existing handoffs and reviews without these keys are rejected on
+  load, so a project upgrading to 0.3.0 must re-record them (or the tasks must be
+  re-handled, which is the honest outcome: those claims never named anyone).
+- The developer and reviewer role definitions now say so, and the developer must
+  sign with the name it was spawned as rather than a role word.
+
 ## 0.2.0 - 2026-10-22
 
 - **The loop is one command.** `wfcheck finish --task T` runs every declared

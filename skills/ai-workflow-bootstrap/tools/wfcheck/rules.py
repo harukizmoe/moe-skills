@@ -301,6 +301,10 @@ def gate(
 
     facts["claimed_sha"] = handoff.commit_sha[:12] or "(empty)"
     facts["claimed_tree"] = handoff.tree[:12] or "(empty)"
+    # Who claims the work is a fact of the record, not a comment: it is printed
+    # so a coordinator can see it, and compared below so one agent cannot both
+    # implement and approve.
+    facts["author"] = f"{handoff.author} ({handoff.author_role})"
 
     head = head_sha(ws.root)
     facts["head"] = head[:12] if head != UNBORN else "(unborn)"
@@ -361,6 +365,17 @@ def gate(
     if reviews:
         latest = reviews[-1]
         facts["review"] = f"r{latest.round} {latest.verdict} @ {latest.reviewed_sha[:12]}"
+        facts["reviewer"] = f"{latest.reviewer} ({latest.reviewer_role})"
+        # A developer that reviews its own work is the failure this kit exists to
+        # prevent, and prose cannot catch it: compare the recorded identities.
+        if latest.reviewer.strip() and latest.reviewer.strip() == handoff.author.strip():
+            problems.append(
+                Problem(
+                    "review-self",
+                    f"r{latest.round} was written by '{latest.reviewer}', the same agent that "
+                    f"handed the task off; a task needs a second agent's verdict",
+                )
+            )
         if latest.reviewed_sha != handoff.commit_sha:
             problems.append(
                 Problem(
